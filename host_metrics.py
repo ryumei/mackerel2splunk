@@ -9,6 +9,7 @@ import urllib2
 import urlparse
 import json
 import ssl
+import logging.config
 ssl._create_default_https_context = ssl._create_unverified_context
 
 def request(url, data=None, headers=None, params=None):
@@ -110,6 +111,7 @@ if __name__ == '__main__':
     args = parser.parse_args()
     conf_name = args.conf
 
+    logging.config.fileConfig(conf_name)
     config = ConfigParser()
     config.read([conf_name])
 
