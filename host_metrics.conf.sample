@@ -1,0 +1,16 @@
+#
+# Configuration file
+#
+[mackerel]
+# API Key of Mackerel
+apikey = 
+# base url for mackerel API
+base_url = https://mackerel.io
+# comma separated host IDs
+host_ids = 
+
+[splunk]
+# Splunk HTTP Event collector endpoint url
+hec_url = https://localhost:8088/services/collector
+# HEC Token
+token = 
