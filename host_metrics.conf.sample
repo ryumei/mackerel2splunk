@@ -32,7 +32,7 @@ handlers=consoleHandler,errorHandler
 
 [handler_consoleHandler]
 class=StreamHandler
-level=DEBUG
+level=INFO
 formatter=simpleFormatter
 args=(sys.stdout,)
 
