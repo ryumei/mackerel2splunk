@@ -13,6 +13,7 @@ import logging.config
 ssl._create_default_https_context = ssl._create_unverified_context
 
 def request(url, data=None, headers=None, params=None):
+    u'''Simple HTTP Client'''
     if params is not None:
         query = urllib.urlencode(params)
         url = '%s?%s' % (url, query)
@@ -32,6 +33,7 @@ def request(url, data=None, headers=None, params=None):
         logging.error(err)
     return None
 
+'''
 metrics_names = [
     'loadavg5',
 
@@ -60,54 +62,100 @@ metrics_names = [
     'filesystem.sdb.size',
     'filesystem.sdb.used',
 ]
+'''
 
 MACKEREL_BASE_URL = 'https://mackerel.io'
-def latest_metrics(apikey, hostIds=None, base_url=MACKEREL_BASE_URL):
-    u'''GET Mackerel host metrics'''
-    headers= { 'X-Api-Key': apikey }
+class MackerelReader(object):
+    def __init__(self, apikey, base_url=MACKEREL_BASE_URL):
+        self.apikey = apikey
+        self.base_url = base_url
 
-    params = []
-    for hostId in hostIds:
-        params.append(('hostId', hostId))
-    for metrics_name in metrics_names:
-        params.append(('name', metrics_name))
-    url = base_url + '/api/v0/tsdb/latest'
+    def _request_headers(self):
+        return { 'X-Api-Key': self.apikey }
 
-    data = request(url, headers=headers, params=params)
-    return data
+    def host_information(self, hostId):
+        u'''GET host detailed information'''
+        url = self.base_url + '/api/v0/hosts/{}'.format(hostId)
+        data = request(url, headers=self._request_headers())
+        return data['host']
+
+    def metric_names(self, hostId):
+        u'''GET host metrics of a host'''
+        url = self.base_url + '/api/v0/hosts/{}/metric-names'.format(hostId)
+        data = request(url, headers=self._request_headers())
+
+        name_map = {}
+        for name in data['names']:
+            items = name.split('.')
+            if items[0] != 'custom':
+                parent = items[0]
+            else: # custom メトリック場合は、ふたつ目まで
+                parent = ".".join(items[0:2])
+
+            if parent not in name_map:
+                name_map[parent] = []
+            name_map[parent].append(name)
+
+        for metric_group, metric_names in name_map.items():
+            if metric_group.startswith('custom.'): # skip custom metrics
+                continue
+            yield metric_names
+
+    def host_metrics(self, hostIds):
+        u'''GET Mackerel host metrics and return as generator'''
+        url = self.base_url + '/api/v0/tsdb/latest'
+        for hostId in hostIds:
+            for metric_names in self.metric_names(hostId):
+                params = [ ('hostId', hostId) ] # as list of tuples
+                for metric_name in metric_names:
+                    params.append(('name', metric_name))
+                data = request(url, headers=self._request_headers(), params=params)
+                hostInfo = self.host_information(hostId)
+                yield {
+                    'hostname': hostInfo['name'],
+                    'host_id': hostId,
+                    'metrics': data['tsdbLatest'][hostId],
+                }
 
 SPLUNK_HEC_URL = 'https://localhost:8088/services/collector'
 def post2hec(data, token, url=SPLUNK_HEC_URL):
     u'''POST metrics to Splunk HEC endpoint'''
     hec_headers = {"Authorization": "Splunk {}".format(token)}
 
-    for hostId, values in data['tsdbLatest'].items():
-        metrics = []
-        for metric_name, v in values.items():
-            metrics.append({
-                "time": v['time'],
-                "event": "metric",
-                "source": "mackerel.io",
-                "host": hostId,
-                "fields": {
-                    "metric_name": metric_name,
-                    "_value": v['value'],
-                },
-            })
-        post_data = "".join([json.dumps(m) for m in metrics])
-        res = request(url, headers=hec_headers, data=post_data)
-        logging.debug(json.dumps(res))
+    hostId = data['host_id']
+    hostname = data['hostname']
+    metrics = []
+    for metric_name, v in data['metrics'].items():
+        metrics.append({
+            "time": v['time'],
+            "event": "metric",
+            "source": "mackerel.io",
+            "host": hostname,
+            "fields": {
+                "metric_name": metric_name,
+                "_value": v['value'],
+            },
+        })
+    post_data = "".join([json.dumps(m) for m in metrics])
+    res = request(url, headers=hec_headers, data=post_data)
+    logging.debug(json.dumps(res))
 
-def main(mackerel_apikey, host_ids, splunk_url, hec_token):
-    data = latest_metrics(mackerel_apikey, hostIds=host_ids)
-    post2hec(data, url=splunk_url, token=hec_token)
+def main(mackerel_apikey, host_ids, splunk_url, hec_token, dryrun=False):
+    mackerel = MackerelReader(mackerel_apikey)
+    for data in mackerel.host_metrics(host_ids):
+        logging.debug(data)
+        if not dryrun:
+            post2hec(data, url=splunk_url, token=hec_token)
 
+DEFAULT_CONF = 'mackerel2splunk.conf'
 if __name__ == '__main__':
     from argparse import ArgumentParser
     from ConfigParser import ConfigParser
     parser = ArgumentParser()
-    parser.add_argument('-c', '--conf', dest='conf',
-                        default='host_metrics.conf')
+    parser.add_argument('-c', '--conf', dest='conf', default=DEFAULT_CONF)
+    parser.add_argument('--dryrun', dest='dryrun',
+                        action='store_true', default=False)
+
     args = parser.parse_args()
     conf_name = args.conf
 
@@ -121,5 +169,5 @@ if __name__ == '__main__':
     hec_token = config.get('splunk', 'token')
     splunk_url = config.get('splunk', 'hec_url')
 
-    main(mackerel_apikey, host_ids, splunk_url, hec_token)
+    main(mackerel_apikey, host_ids, splunk_url, hec_token, dryrun=args.dryrun)
 

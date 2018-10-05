@@ -43,4 +43,6 @@ formatter=simpleFormatter
 args=("error.log", 'a', 200*1024, 3)
 
 [formatter_simpleFormatter]
-format=%(asctime)s - %(name)s %(levelname)-7s %(message)s
+format=%(asctime)s %(levelname)-7s %(module)s:%(lineno)s:%(funcName)s - %(message)s
+datefmt=%Y-%m-%dT%H:%M:%S%z
+
