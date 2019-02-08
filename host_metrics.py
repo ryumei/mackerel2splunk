@@ -129,16 +129,22 @@ def post2hec(data, token, url=SPLUNK_HEC_URL):
     hostname = data['hostname']
     metrics = []
     for metric_name, v in data['metrics'].items():
-        metrics.append({
-            "time": v['time'],
-            "event": "metric",
-            "source": "mackerel.io",
-            "host": hostname,
-            "fields": {
-                "metric_name": metric_name,
-                "_value": v['value'],
-            },
-        })
+        if v is None:
+            continue
+        try:
+            metrics.append({
+                "time": v['time'],
+                "event": "metric",
+                "source": "mackerel.io",
+                "host": hostname,
+                "fields": {
+                    "metric_name": metric_name,
+                    "_value": v['value'],
+                },
+            })
+        except KeyError as err:
+            logging.warn(err)
+            continue
     post_data = "".join([json.dumps(m) for m in metrics])
     res = request(url, headers=hec_headers, data=post_data)
     logging.debug(json.dumps(res))
