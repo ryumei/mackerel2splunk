@@ -3,31 +3,34 @@
 # Post to metrics index via Spluk HTTP Event Collector.
 #
 import os
-import logging
-import urllib
-import urllib2
-import urlparse
 import json
 import ssl
+import logging
 import logging.config
+from six.moves.urllib.parse import urlencode
+from six.moves.urllib.request import Request
+from six.moves.urllib.request import urlopen
+from six.moves.urllib.error import URLError
+from six.moves.urllib.error import HTTPError
+from six.moves.urllib.parse import urlparse
 ssl._create_default_https_context = ssl._create_unverified_context
 
 def request(url, data=None, headers=None, params=None):
     u'''Simple HTTP Client'''
     if params is not None:
-        query = urllib.urlencode(params)
+        query = urlencode(params)
         url = '%s?%s' % (url, query)
-    req = urllib2.Request(url, headers=headers)
+    req = Request(url, headers=headers)
     if data is not None:
         req.add_data(data)
     try:
         logging.debug("%s %s", req.get_method(), url)
-        res = urllib2.urlopen(req)
+        res = urlopen(req)
         return json.loads(res.read())
-    except urllib2.HTTPError as err:
+    except HTTPError as err:
         logging.error("%s. Client error GET %s with status %d.",
                       err.reason, url, err.code)
-    except urllib2.URLError as err:
+    except URLError as err:
         logging.exception(err)
     except (ValueError, TypeError) as err:
         logging.error(err)
@@ -150,7 +153,7 @@ def main(mackerel_apikey, host_ids, splunk_url, hec_token, dryrun=False):
 DEFAULT_CONF = 'mackerel2splunk.conf'
 if __name__ == '__main__':
     from argparse import ArgumentParser
-    from ConfigParser import ConfigParser
+    from six.moves.configparser import ConfigParser
     parser = ArgumentParser()
     parser.add_argument('-c', '--conf', dest='conf', default=DEFAULT_CONF)
     parser.add_argument('--dryrun', dest='dryrun',
